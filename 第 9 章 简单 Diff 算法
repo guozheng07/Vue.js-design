@@ -1,0 +1,45 @@
+**减少 DOM 操作的性能开销**
+function patchChildren(n1, n2, container) {
+	if (typeof n2.children === 'string') {
+    if (Array.isArray(n1.children)) {
+    	n1.children.forEach((c) => c.unmount(c))
+    }
+    setElementText(container, n2.children)
+  } else if (Array.isArray(n2.children)) {
+  	if (Array.isArray(n1.children)) {
+    	// 重新实现两组子节点的更新方式
+      // 新旧 children
+      const oldChildren = n1.children
+      const newChildren = n2.children
+      const oldLen = oldChildren.length
+      const newLen = newChildren.length
+      // 两组子节点的公共长度，即两者中较短的那一组子节点的长度
+      const commonLength = Math.min(oldLen, newLen)
+      // 遍历 commonLength 次
+      for (let i = 0;i < commonLength; i++) {
+      	// 调用 patch 函数逐个更新子节点
+        patch(oldChildren[i], newChildren[i])
+      }
+      // 如果 newLen > oldLen，说明有新节点需要挂载
+      if (newLen > oldLen) {
+      	for (let i = commonLength;i < newLen; i++) {
+        	patch(null, newChildren[i], container)
+      	}
+      } else if (oldLen > newLen) {
+      	// 如果 oldLen > newLen，说明有旧节点需要卸载
+        for (let i = commonLength;i < oldLen; i++) {
+        	unmount(oldChildren[i])
+      	}
+      }
+    } else {
+      setElementText(container, '')
+      n2.children.forEach(c => patch(null, c, comtainer))
+    }
+  } else { 
+    if (Array.isArray(n1.children)) {
+      n1.children.forEach(c => unmount(c))
+    } else if (typeof n1.children === 'string') {
+    	setElementText(container, '')
+    }
+  }
+}
