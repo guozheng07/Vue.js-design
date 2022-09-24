@@ -39,3 +39,28 @@
   - 立即执行 -> immediate 选项参数
   - 其他执行时机 -> flush 选项参数（本质上是利用了调度器和异步的微任务队列）
 - 怎么解决过期的副作用？-> watch 的第三个参数 onInvalidate，使用 onOnvalidate 函数注册一个回调，这个回调函数在当前副作用函数过期时执行（每当 watch 的回调函数执行之前，会优先执行用户通过 onInvalidate 注册的过期回调。这样，用户就有机会在过期回调中将上一次的副作用标记为“过期”，从而解决竞态问题）
+
+# 5.非原始值的响应式方案
+概念
+- 什么是代理、Proxy、Reflect？基本操作有哪些？非基本操作有哪些？
+- Reflect 函数的作用？（见86～88页）
+- 怎么区分一个对象是普通对象还是函数？怎么区分一个对象是普通对象还是异质对象？
+- 什么是浅响应？-> 只是对象的第一层属性是响应的。  
+
+代理 Object
+- 对一个普通对象读取操作的拦截
+- 访问属性的拦截 -> Proxy 构造函数中设置 get 函数来 track，
+- in 操作符的拦截 -> Proxy 构造函数中设置 has 函数来 track
+- for...in 循环的拦截 -> Proxy 构造函数中设置 ownKeys 函数来 track
+  - 新增属性，会增加 for...in 循环次数 -> Proxy 构造函数中设置 set 函数来 track && 需要触发与 ITERATE_KEY 相关联的副作用函数重新执行 -> 完善 trigger 函数（新增 type 参数）
+  - 修改属性，for...in 循环次数不变 -> Proxy 构造函数中设置 set 函数来 track && 不需要触发与 ITERATE_KEY 相关联的副作用函数重新执行 -> 完善 trigger 函数（新增 type 参数）
+  - 删除属性，会减少 for...in 循环次数 -> Proxy 构造函数中设置 set 函数来 track && 需要触发与 ITERATE_KEY 相关联的副作用函数重新执行 -> 完善 trigger 函数（新增 type 参数）
+- 合理地触发响应
+  - 设置的值没有发生变化时，不需要触发响应（另一种说法：“设置的值发生变化时，并且都不是 NaN时，需要触发响应”）-> 完善 Proxy 构造函数中的 set 函数
+  - 将 Proxy 构造函数进行封装 -> 得到组合式 API 中熟悉的 reactive 方法
+  - 屏蔽由原型引起的更新 -> 确定 receiver 是不是 target 的代理对象（只有 receiver 是 target 的代理对象才更新） -> 完善 Proxy 构造函数中的get 函数（raw 属性）
+- 浅响应和深响应
+  - 怎么实现深响应？-> Reflect.get 返回的结果是对象，则递归地调用 reactive 函数将其包装成响应式对象，再返回 -> 完善 Proxy 构造函数中的 get 函数
+  - 怎么兼顾深响应和浅响应？-> reactive 函数摇身一变成 createReactive 函数，并完善 Proxy 构造函数中的 get 函数（添加 isShallow 属性），实现深响应（reactive）和浅响应（shallowReactive）时分别调用 createReactive 函数，赋予不同的 isShallow 参数
+- 只读和浅只读
+  - 怎么实现只读？-> 为 createReactive 函数添加 isReadonly 属性 -> 完善 Proxy 构造函数中的 set 函数（不允许修改）和 deleteProperty（不允许删除）
