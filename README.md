@@ -41,13 +41,13 @@
 - 怎么解决过期的副作用？-> watch 的第三个参数 onInvalidate，使用 onOnvalidate 函数注册一个回调，这个回调函数在当前副作用函数过期时执行（每当 watch 的回调函数执行之前，会优先执行用户通过 onInvalidate 注册的过期回调。这样，用户就有机会在过期回调中将上一次的副作用标记为“过期”，从而解决竞态问题）
 
 # 5.非原始值的响应式方案
-概念
+## 概念
 - 什么是代理、Proxy、Reflect？基本操作有哪些？非基本操作有哪些？
 - Reflect 函数的作用？（见86～88页）
 - 怎么区分一个对象是普通对象还是函数？怎么区分一个对象是普通对象还是异质对象？
 - 什么是浅响应？-> 只是对象的第一层属性是响应的。  
 
-代理 Object
+## 代理 Object
 - 对一个普通对象读取操作的拦截
 - 访问属性的拦截 -> Proxy 构造函数中设置 get 函数来 track，
 - in 操作符的拦截 -> Proxy 构造函数中设置 has 函数来 track
@@ -64,3 +64,30 @@
   - 怎么兼顾深响应和浅响应？-> reactive 函数摇身一变成 createReactive 函数，并完善 Proxy 构造函数中的 get 函数（添加 isShallow 属性），实现深响应（reactive）和浅响应（shallowReactive）时分别调用 createReactive 函数，赋予不同的 isShallow 参数
 - 只读和浅只读
   - 怎么实现只读？-> 为 createReactive 函数添加 isReadonly 属性 -> 完善 Proxy 构造函数中的 set 函数（不允许修改）和 deleteProperty（不允许删除）
+
+# 6.原始值的响应式方案
+## 原始值
+概念
+- 有哪些？
+- 有什么特点？
+
+## 引入 ref
+概念
+- 什么是响应丢失问题？-> 把一个普通对象暴露到模版中使用
+
+实现 ref
+- JS 中的 Proxy 无法提供对原始值的代理，怎么解决？-> 使用非原始值去“包裹”原始值
+- 区分一个 ref 是原始值的包裹对象，还是一个非原始值的响应式数据？-> 通过 Object.defineProperty 为包裹对象 wrapper 定义 __v_isRef 属性
+- 怎么解决响应丢失问题？-> 将对象改造成访问器对象，在副作用函数内读取 newObj.foo 时，等价于间接读取了 obj.foo -> 抽象结构，得到 toRef 函数
+- 响应式数据 obj 的键非常多 -> 封装 toRefs 函数
+- 通过 toRef 函数创建的 ref 是只读的 -> 为 toRef 函数返回对象的 value 属性设置 setter
+- ref 的作用：实现原始值的响应式方案、解决响应丢失问题
+
+## 自动脱 ref
+- toRefs 函数有什么问题？-> 必须通过 value 属性访问值
+- 自动脱 ref 的含义？-> 如果读取的属性是一个 ref，则直接将该 ref 对应的 value 属性值返回
+- 怎么实现自动脱 ref？-> proxyRefs 函数（使用 Proxy 为 newObj 创建一个代理对象，拦截 set 和 get 操作）
+- 为什么我们可以在模版直接访问一个 ref 的值，而无需通过 value 属性来访问？-> setup 返回的对象会传递给 proxyRefs
+- 自动脱 ref 的意义？-> 用户在模版中使用响应式数据时，将不再关心哪些是 ref，哪些不是 ref。
+
+# 7.渲染器的设计
