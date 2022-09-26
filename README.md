@@ -91,3 +91,90 @@
 - 自动脱 ref 的意义？-> 用户在模版中使用响应式数据时，将不再关心哪些是 ref，哪些不是 ref。
 
 # 7.渲染器的设计
+## 渲染器
+概念
+- 挂载、容器
+- 渲染器与渲染的区分  
+
+功能
+- 作用
+- 响应式系统与渲染器的关系
+
+## 自定义渲染器的实现
+概念
+- 渲染函数：render
+- 更新函数：patch
+- 挂载函数：mountElement  
+
+实现
+- 怎么渲染一个普通标签元素？-> 将 render、patch、mountElement 函数串联起来
+- 怎么设计一个不依赖于浏览器平台的通用渲染器？-> 将浏览器特有的 API 抽离 -> 将操作 DOM 的 API 作为配置项（新增、修改、删除等），该配置项作为 createRenderer  函数的参数，这样在 mountElement  函数中就可以通过配置项来获取取得 DOM 的 API（不需要在本身函数中写死）。  
+
+本质
+- 自定义渲染器只是通过“抽象”的手段，让核心代码不再依赖平台特有的 API，再通过支持个性化配置的能力来实现跨平台。
+
+# 8.挂载与更新
+## 挂载
+概念
+- 完整的虚拟 DOM 有什么内容？
+  - type：元素（div、span 等）
+  - props：元素的属性（通用-id、class；特定-表单的 action 等）
+  - children：元素的子节点（元素的子节点除了文本节点，还可以包含其他元素节点，因此 vnode.children 是一个数组）
+- HTML Attributes 与 DOM Properties 的定义、联系和区别？-> HTML Attributes 的作用是设置与之对应的 DOM Properties 的初始值。
+- 以 disabled 属性为例，说明为什么使用 setAttribute 函数还是直接设置元素的 DOM Properties 均存在缺陷？-> 虚拟 DOM 的属性值为空字符串，带来的问题（185页）怎么解决？-> 正确地设置元素属性
+- 为什么对 class 属性做特殊处理？-> Vue.js 对 class 属性做了增强，可以设置字符串、对象和数组，所以必须在设置元素的 class 之前将值归一化为统一的字符串形式，再把该字符串作为元素的 class 值去设置。
+- 在浏览器中为一个元素设置 class 有三种方式：使用 setAttribute、el.className（性能最优，所以用这种方式设置 class）、el.classList。  
+
+实现
+- vnode.children 是一个数组，怎么改写 渲染器中的 mountElement/挂载 函数？-> 增加 Array.isArray(vode.children)的判断条件
+- 怎么将元素的属性渲染到对应的元素上？-> 增加 vnode.props 的遍历 + 调用 setAttribute 设置/通过 DOM 对象直接设置
+- 怎么正确地设置元素属性？-> 优先设置 DOM Properties；同时对布尔类型的 DOM Properties 做值的矫正（当要设置的值为空字符串时设置成 true）；只读的 DOM Properties（input 标签的 form 属性） 通过 setAttribute 函数设置；把属性的设置变成与平台无关。
+- 怎么对 class 属性做特殊处理？-> 在设置元素的 class 之前将值归一化为统一的字符串形式（封装 normalizeClass 函数对值进行序列化）；使用 el.className 设置 class 属性。
+- Vue.js 对 style 属性也做了增强，所以对 style 属性也做类似于 class 的处理。
+
+## 卸载
+概念
+- 《自定义渲染器》小节中，vode 为 null 且 container._vnode 属性存在时，直接通过 innerHTML 清空容器为什么不严谨？
+  - 容器的内容可能由某个或多个组件渲染，卸载时应调用这些组件的 beforeUnmount、unMounted 等生命周期函数。
+  - 即使内容不是由组件渲染的，有的元素存在自定义指令，应该在卸载时正确执行对应的指令钩子函数。
+  - 使用 innerHTML 清空容器元素内容，不会移除绑定在 DOM 元素上的事件处理函数。
+- 将卸载操作封装到 unmount 中，有什么好处？
+  - 在 unmount 函数内，有机会调用绑定在 DOM 元素上的指令钩子函数
+  - 在 unmount 函数执行时，有机会检测虚拟节点 vnode 的类型，若虚拟节点是描述的是组件，有机会调用组件相关的生命周期函数。  
+
+实现
+- 正确的卸载方式是什么？-> 根据 vnode 对象获取与其相关联的真实 DOM 元素，然后使用原生 DOM 操作方法将 DOM 元素删除 -> 在 vnode 与真实 DOM 元素间建立联系，修改 mountElement 函数和 render 函数，封装 unmount 函数。  
+
+## 更新
+概念
+- 一个 vnode 可以描述的类型：描述普通标签、描述组件、描述 Fragment 等。
+- 发生事件冒泡时，父元素绑定事件函数发生在事件冒泡之前。这种现象导致了初始化时本来没有绑定事件的父元素绑定了事件并执行（详情见202页）。
+- vnode.children 有三种情况：没有子节点、具有文本子节点、其他情况。所以更新子节点共有 3 * 3 = 9 种情况。
+- 注释节点、文本节点、Fragment 不同于普通标签节点，需要人为创造一些唯一标识（通过 Symbol），作为它们的 vnode.type 属性值
+  - 文本节点：type 为 Text（const Text = Symbol()）
+  - 注释节点：type 为 Comment（const Comment = Symbol()）
+  - Fragment：type 为 Fragment（const Fragment = Symbol()）
+- Fragment（片段）是 Vue.js 3 新增的一个 vnode 类型（通过 Fragment，Vue.js 3实现了支持多根节点模版，这是 Vue.js 2不支持的）（参考212页）。
+- 对于 Fragment 类型的 vnode，它的 children 存储的内容就是模版中所有根节点。  
+
+普通标签和事件更新的实现
+- 区分 vnode 的类型？-> 新旧 vnode 描述的内容相同时，需要打补丁；新旧 vnode 描述的内容不同时，需要先卸载旧的元素，再挂载新的元素，需要调整 patch 函数（对比 n1 和 n2 的类型） 
+- 新旧 vnode 描述的内容相同，如何进一步确定它们的类型是否相同？-> 调整 patch 函数（根据 n2 的类型分别进行处理）
+- 怎么处理事件 -> 改造 patchProps
+  - 如何在虚拟节点中描述事件？-> 约定在 vnode.props 中，以字符串 on 开头的属性都视为事件
+  - 如何把事件添加到 DOM 元素上？-> 在 patchProps 中调用 addEventListener 函数来绑定事件
+  - 如何更新事件？-> 方式一：移除之前添加的事件处理函数，然后将新的事件处理函数绑定到 DOM 元素上；方式二：绑定事件时，绑定一个伪造的事件处理函数 invoker，把真正的事件处理函数设置为 invoker.value 属性的值，在更新事件时，不再需要调用 removeEventListener 函数来移除上一次绑定的事件，只需要更新 invoker.value 属性的值即可（性能更优，避免一次 removeEventListener 函数的调用）
+  - 同一个元素同时绑定了多种事件时，怎么解决事件覆盖的现象（事件处理函数都缓存在 el._vei 中，而同一时刻只能缓存一个事件处理函数）？-> 重新设计  el._vei 的数据结构（改为对象）
+  - 同一类型的事件绑定了多个事件处理函数应该怎么解决（例如为 click 事件同时绑定了回调 fn1 和 fn2）？-> 增加 invoker.value 是数组的处理逻辑
+- 怎么解决“父元素绑定事件函数发生在事件冒泡之前”导致的问题？-> 因为事件触发的时间要早于事件处理函数被绑定的事件，利用这个特点，可以通过“屏蔽所有绑定时间晚于事件触发时间的事件处理函数的执行”来解决 -> 增加 invoker.attached 属性  
+
+元素子节点更新的实现
+- 怎么更新子节点？-> 根据新旧 vnode.children 的类型分情况处理（理论有9种情况，实际上有些情况可以合并处理或不需要处理） -> patchElement 函数和 patchChildren 函数  
+
+文本节点和注释节点的渲染
+- 除了描述普通标签， vnode 怎么描述文本节点和注释节点？-> 完善 patch 函数
+- patch 函数依赖平台特有的 API，保证跨平台将操作 DOM 的 API 封装到渲染器的选项中 -> 增加调用 createRenderer 函数创建 renderer 时的选项配置  
+
+Fragment 的渲染
+- 从本质上来说，渲染 Fragment 与渲染普通元素的区别是：Fragment 本身不渲染任何内容，只需要处理它的子节点即可。-> 完善 patch 函数
+- 卸载也需要支持 Fragment 类型虚拟节点的卸载 -> 完善 unmount 函数
